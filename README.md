@@ -131,7 +131,7 @@ appears, the pipeline will prompt you to solve it manually and retry.
 
 ### Option C: Local Firefox
 
-For publishers without aggressive bot detection (ACS, RSC, etc.).
+For websites without aggressive bot detection.
 
 ```bash
 # 1. Start StirlingPDF
@@ -221,7 +221,7 @@ Three example configs are provided:
 | File | Browser | Profile | Headless | Use case |
 |------|---------|---------|----------|----------|
 | `config.yaml` | Firefox | Clean | Yes | Docker / Singularity |
-| `config.chrome.yaml` | Chrome | Your profile | No | Cloudflare-heavy publishers |
+| `config.chrome.yaml` | Chrome | Your profile | No | Cloudflare-heavy |
 | `config.firefox-local.yaml` | Firefox | Clean | Yes | Local, no Cloudflare issues |
 
 Copy whichever fits your use case to `config.yaml`.
@@ -239,7 +239,7 @@ scraper:
 
 ## Cloudflare Handling
 
-Many publishers (especially Wiley) use Cloudflare bot detection. golddigr
+Many websites use Cloudflare bot detection. golddigr
 handles this with a multi-tier approach:
 
 1. **Automatic wait** — If a challenge page is detected, waits 5s → 10s → 15s
