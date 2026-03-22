@@ -1,4 +1,10 @@
-# golddigr
+# GoldDIGR: Search, Download, Analyze Open-Source Chemistry Data
+
+<div align="center">
+
+![Logo](Logo.png)
+
+</div>
 
 Systematic, resumable mining of supplementary information (SI) files from
 chemistry journal articles. Extracts XYZ coordinates, computational-chemistry
