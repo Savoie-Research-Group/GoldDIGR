@@ -59,4 +59,4 @@ Key software: xTB 6.5.1, tblite 0.3.0, pysisyphus 0.7.6, YARP 0.0.1, molSimplify
 
 ## Citation
 
-> Zhao Li, Ivan Yiwen Yang, Brett M. Savoie. "Mining Organometallic Reaction Pathways from Supplementary Information at Scale." *J. Am. Chem. Soc.* (2026).
+> Zhao Li, Ivan Yiwen Yang, Brett M. Savoie. "Reaction Database for Catalysis and Organometallics via Freely Available Supplementary Information." *ArXiv* (2025).
