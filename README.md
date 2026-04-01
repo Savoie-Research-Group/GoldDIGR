@@ -25,6 +25,10 @@ Given a CSV of article URLs, golddigr:
 
 Every stage is tracked in SQLite. Re-running picks up exactly where it left off.
 
+## Computational Plugin
+
+The `plugin/` directory contains the post-extraction computational pipeline that processes XYZ structures identified by GoldDIGR through five stages: (1) charge sampling with TSOPT and IRC at the GFN2-xTB level, (2) two-pass spin-polarized energy and Wiberg bond order scanning along IRC trajectories, (3) YARP bond-electron matrix analysis of IRC endpoints and frames, (4) electron-flow Sankey diagram generation, and (5) rule-based reaction classification into organometallic classes (oxidative addition, reductive elimination, migratory insertion, β-atom elimination, C–H activation, and transmetalation). Each stage has its own subdirectory with scripts, templates, and a per-stage README. See [`plugin/README.md`](plugin/README.md) for usage details.
+
 ## Architecture
 
 ```
