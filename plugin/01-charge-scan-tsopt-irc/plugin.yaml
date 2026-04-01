@@ -1,0 +1,146 @@
+###############################################################################
+# plugin.yaml – xTB Frequency → TSOPT → IRC → Spin/WBO → IRC Analysis
+###############################################################################
+# This manifest describes the computational workflow that runs on an HPC
+# cluster after golddigr has extracted XYZ files from published SI PDFs.
+#
+# "LLM writes plumbing, never touches science."
+# All scripts/ are user-provided and copied verbatim into the submission
+# package.  Only the glue (runner.sh, SLURM submit scripts) is generated.
+###############################################################################
+
+name: xtb-freq-tsopt-irc-wbo
+version: "1.0"
+description: >
+  For each extracted XYZ structure, run xTB frequency analysis to identify
+  candidate transition states, then perform pysisyphus TSOPT + IRC,
+  followed by spin-polarised WBO scanning and IRC bond-electron analysis
+  with Sankey visualisation.
+
+# ── Environment ──────────────────────────────────────────────────────────
+environment:
+  type: conda
+  file: environment.yml
+  name: another-yarp           # conda env name on the cluster
+
+# ── Charge / Multiplicity Strategy ──────────────────────────────────────
+charge_strategy:
+  # If the XYZ comment line contains "charge=<int>", use that.
+  # Otherwise, sample each of these charges independently through the
+  # full pipeline (3 independent runs per XYZ file).
+  sample: [-1, 0, 1]
+  mult: auto                   # lowest multiplicity for each (charge, #electrons) pair
+
+# ── SLURM defaults (overridden by cluster.yaml) ────────────────────────
+slurm_defaults:
+  account: "PLACEHOLDER"
+  partition: "cpu"
+  qos: "normal"
+  nodes: 1
+  ntasks_per_node: 1
+  time: "04:00:00"
+  modules:                     # `module load` commands prepended to every job
+    - "conda/2025.02"
+    - "intel-mkl"
+    - "openmpi"
+
+# ── Pipeline Stages ─────────────────────────────────────────────────────
+# Each stage runs inside a single SLURM job (one job per XYZ per charge).
+# Stages execute sequentially within the job; gates decide whether to
+# continue to the next stage or stop early.
+stages:
+
+  - name: freq
+    description: "xTB GFN2 Hessian calculation (frequency analysis)"
+    type: command
+    command: >
+      xtb {xyz} --hess --chrg {charge} --uhf {uhf}
+      --acc 0.2 --iterations 300 --namespace freq
+    workdir: "."
+    gate:
+      type: imaginary_freq
+      # Pass if lowest frequency < -20 cm⁻¹ (i.e. |ν| > 20)
+      threshold: -20
+      source: "g98.out"        # xTB writes Gaussian-format freq output here
+
+  - name: tsopt
+    description: "Pysisyphus RS-P-RFO transition state optimisation"
+    type: pysisyphus
+    template: templates/TSOPT_yaml.template
+    placeholders:
+      CHARGE_PLACEHOLDER: "{charge}"
+      MULT_PLACEHOLDER: "{mult}"
+    input_file: "input.xyz"    # renamed from the original XYZ
+    gate:
+      type: file_exists
+      file: "ts_final_geometry.xyz"
+
+  - name: irc
+    description: "Pysisyphus Euler predictor–corrector IRC"
+    type: pysisyphus
+    template: templates/TSOPT-IRC_yaml.template
+    placeholders:
+      CHARGE_PLACEHOLDER: "{charge}"
+      MULT_PLACEHOLDER: "{mult}"
+    input_file: "ts_final_geometry.xyz"
+    gate:
+      type: file_exists
+      file: "finished_irc.trj"
+    produces:
+      - "finished_irc.trj"
+      - "finished_first.xyz"
+      - "finished_last.xyz"
+
+  - name: spin_wbo
+    description: "Two-pass spin-polarised xTB scan + Wiberg bond orders"
+    type: python
+    script: scripts/spin_wbo_scan.py
+    args: >
+      --trj finished_irc.trj
+      --charge {charge}
+      --mult -1
+      --uhf-max 6
+      --workdir xTB-scan
+      --nprocs 1
+    gate:
+      type: file_exists
+      file: "xTB-scan/spin_scan_summary.csv"
+
+  - name: irc_analysis
+    description: "YARP bond-electron matrix analysis of IRC trajectory"
+    type: python
+    script: scripts/yarp_results_builder.py
+    args: "{workdir}/ --charge {charge}"
+    gate:
+      type: file_exists
+      file: "IRC_Analysis/finished_first/frame_00000.json"
+
+  - name: sankey
+    description: "Sankey flow diagram of electron transport along IRC"
+    type: python
+    script: scripts/irc_sankey_zoomsvg_fixed.py
+    args: >
+      --root IRC_Analysis
+      --topK 999
+      --min-frac 0.0
+      --out IRC_Analysis/sankey
+      --window 50
+    gate:
+      type: directory_exists
+      file: "IRC_Analysis/sankey"
+
+# ── Outputs ──────────────────────────────────────────────────────────────
+# After all stages complete for a given (XYZ, charge) combo, these are
+# packed into a zip archive named: {xyz_stem}_{charge}_{mult}.zip
+outputs:
+  archive: true
+  include:
+    - "xTB-scan/"
+    - "IRC_Analysis/"
+    - "input.xyz"
+    - "ts_final_geometry.xyz"
+    - "finished_irc.trj"
+    - "finished_first.xyz"
+    - "finished_last.xyz"
+    - "g98.out"
+

@@ -1,0 +1,121 @@
+#!/bin/bash
+#
+#SBATCH --job-name=JOBNAME_PLACEHOLDER
+#SBATCH --output=%x.%j.out
+#SBATCH --error=%x.%j.err
+#SBATCH -A bsavoie
+#SBATCH --partition=cpu
+#SBATCH --qos=normal
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --time 04:00:00
+
+set -euo pipefail
+
+# === Environment (match your working env) ===
+module load conda/2025.02
+conda activate another-yarp
+module load intel-mkl
+module load openmpi
+
+# === Inputs ===
+PARENT_DIR="FILEPATH"
+
+# Where the Python scripts live (update if needed)
+YARP_BUILDER="$HOME/metal_ligand_pkg_clean/yarp_results_builder.py"
+SANKEY_SCRIPT="$HOME/metal_ligand_pkg_clean/irc_sankey_zoomsvg_fixed.py"
+
+# Sanity
+if [ ! -f "$YARP_BUILDER" ]; then
+  echo "Missing: $YARP_BUILDER"; exit 2; fi
+if [ ! -f "$SANKEY_SCRIPT" ]; then
+  echo "Missing: $SANKEY_SCRIPT"; exit 2; fi
+
+cd "$PARENT_DIR"
+
+shopt -s nullglob
+for zip_file in *.zip; do
+  # Skip crash zips
+  [[ "$zip_file" == *crash* ]] && continue
+
+  # Skip if already has IRC_Analysis/
+  if { unzip -l "$zip_file" || true; } | grep -q "IRC_Analysis/"; then
+    echo "[skip] Already contains IRC_Analysis/: $zip_file"
+    continue
+  fi
+
+  # Must contain finished_irc.trj to proceed (like spin flow)
+  if ! { unzip -l "$zip_file" || true; } | grep -q "finished_irc.trj"; then
+    echo "[skip] No finished_irc.trj in $zip_file"
+    continue
+  fi
+
+  # ---- Parse charge from zip filename: name like 30_1_2.zip -> charge=1 ----
+  zip_base="${zip_file%.zip}"        # 30_1_2
+  tmp="${zip_base%_*}"               # 30_1
+  CHARGE="${tmp##*_}"                # 1
+  echo "[info] Parsed charge=${CHARGE} from ${zip_file}"
+
+  # ---- Working dir (same name as zip, minus .zip) ----
+  work_dir="$zip_base"
+  [ -d "$work_dir" ] && { echo "[clean] Removing stale $work_dir"; rm -rf "$work_dir"; }
+  mkdir -p "$work_dir"
+
+  # ---- Extract the **three** inputs we need for yarp_results_builder.py ----
+  # Put them into $work_dir with their exact filenames.
+  unzip -oqj "$zip_file" "*/finished_first.xyz"    -d "$work_dir"/ || true
+  unzip -oqj "$zip_file" "*/finished_last.xyz"     -d "$work_dir"/ || true
+  unzip -oqj "$zip_file" "*/finished_irc.trj"      -d "$work_dir"/ || true
+  unzip -oqj "$zip_file" "*/input.xyz"             -d "$work_dir"/ || true
+  unzip -oqj "$zip_file" "*/ts_final_geometry.xyz" -d "$work_dir"/ || true
+
+  # Verify inputs exist
+  for f in finished_first.xyz finished_last.xyz finished_irc.trj; do
+    if [ ! -f "$work_dir/$f" ]; then
+      echo "[warn] Missing $f in $zip_file. Skipping this zip."
+      rm -rf "$work_dir"
+      continue 2
+    fi
+  done
+
+  # ---- Run builder (writes IRC_Analysis inside $work_dir) ----
+  echo "[run] python $YARP_BUILDER $work_dir/ --charge $CHARGE"
+  python "$YARP_BUILDER" "$work_dir/" --charge "$CHARGE"
+
+  # ---- Run Sankey into IRC_Analysis/sankey ----
+  sankey_root="$work_dir/IRC_Analysis"
+  sankey_out="$sankey_root/sankey"
+  mkdir -p "$sankey_out"
+
+  echo "[run] python $SANKEY_SCRIPT --root $sankey_root --topK 999 --min-frac 0.0 --out $sankey_out --window 50"
+
+  # CAPTURE FAILURE: If Sankey fails (like your FileNotFoundError), skip to next
+  if ! python "$SANKEY_SCRIPT" \
+    --root "$sankey_root" \
+    --topK 999 \
+    --min-frac 0.0 \
+    --out "$sankey_out" \
+    --window 50; then
+      echo "[error] Sankey Script failed for $zip_file (likely missing files). Skipping..."
+      rm -rf "$work_dir"
+      continue
+  fi
+
+  # ---- Attach IRC_Analysis back into the zip ----
+  echo "[zip] Updating $zip_file with ${work_dir}/IRC_Analysis/"
+  
+  # CAPTURE FAILURE: If zip fails (locking/permissions), don't crash the script
+  if ! zip -urq "$zip_file" "${work_dir}/IRC_Analysis"; then
+       echo "[error] Failed to update zip for $zip_file"
+       # We proceed to cleanup anyway so we don't leave trash
+  fi
+
+  # ---- Cleanup work dir ----
+  echo "[clean] $work_dir"
+  rm -rf "$work_dir"
+
+done
+shopt -u nullglob
+
+echo "[done] IRC analysis job finished."
+

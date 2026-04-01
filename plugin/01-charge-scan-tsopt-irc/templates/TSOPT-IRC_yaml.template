@@ -1,0 +1,20 @@
+geom:
+ type: cart
+ fn: ts_final_geometry.xyz
+calc:
+ type: xtb
+ pal: 6
+ mem: 4000
+ charge: CHARGE_PLACEHOLDER
+ mult: MULT_PLACEHOLDER
+irc:
+ type: eulerpc
+ forward: True
+ backward: True
+ downhill: False
+endopt:
+ fragments: False
+ do_hess: False
+ thresh: gau
+ max_cycles: 200
+

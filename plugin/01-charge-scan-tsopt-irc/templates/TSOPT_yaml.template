@@ -1,0 +1,16 @@
+geom:
+ type: cart
+ fn: input.xyz
+calc:
+ type: xtb
+ pal: 6
+ mem: 4000
+ charge: CHARGE_PLACEHOLDER
+ mult: MULT_PLACEHOLDER
+tsopt:
+ type: rsprfo
+ do_hess: True
+ hessian_recalc: 1
+ thresh: gau
+ max_cycles: 50
+
