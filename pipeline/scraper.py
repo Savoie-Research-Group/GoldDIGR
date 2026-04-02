@@ -167,13 +167,22 @@ def _resolve_profile(browser: str, profile_setting: Optional[str]) -> Optional[s
         return profile_setting
 
 
+_cached_chrome_profile: Optional[str] = None
+
+
 def _copy_chrome_profile(source: str) -> Optional[str]:
     """
     Copy a Chrome user-data-dir to a temp directory so Selenium can
     use it while the real Chrome is still running.
 
     Copies Default/ profile essentials, skips caches for speed.
+    The copy is cached — subsequent calls reuse the same temp dir.
     """
+    global _cached_chrome_profile
+    if _cached_chrome_profile and Path(_cached_chrome_profile).is_dir():
+        logger.debug("Reusing cached Chrome profile: %s", _cached_chrome_profile)
+        return _cached_chrome_profile
+
     try:
         tmp_dir = tempfile.mkdtemp(prefix="golddigr_chrome_")
         src = Path(source)
@@ -183,12 +192,17 @@ def _copy_chrome_profile(source: str) -> Optional[str]:
         if local_state.is_file():
             shutil.copy2(str(local_state), tmp_dir)
 
-        # Copy Default profile, skipping large cache dirs
+        # Copy Default profile, skipping large/unnecessary dirs
         src_default = src / "Default"
         dst_default = Path(tmp_dir) / "Default"
 
-        skip_dirs = {"Cache", "Code Cache", "GPUCache", "Service Worker",
-                     "DawnCache", "ShaderCache", "GrShaderCache"}
+        skip_dirs = {
+            "Cache", "Code Cache", "GPUCache", "Service Worker",
+            "DawnCache", "ShaderCache", "GrShaderCache",
+            "blob_storage", "Session Storage", "Sessions",
+            "File System", "IndexedDB", "databases",
+            "WebStorage", "optimization_guide_prediction_model_downloads",
+        }
 
         def _ignore(directory, contents):
             return [c for c in contents if c in skip_dirs]
@@ -209,6 +223,7 @@ def _copy_chrome_profile(source: str) -> Optional[str]:
                 lock_inner.unlink(missing_ok=True)
 
         logger.info("Copied Chrome profile to temp dir: %s", tmp_dir)
+        _cached_chrome_profile = tmp_dir
         return tmp_dir
     except Exception as exc:
         logger.warning("Failed to copy Chrome profile: %s, using clean session", exc)
