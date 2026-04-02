@@ -166,9 +166,7 @@ def _resolve_profile(browser: str, profile_setting: Optional[str]) -> Optional[s
             return None
         return profile_setting
 
-
 _cached_chrome_profile: Optional[str] = None
-
 
 def _copy_chrome_profile(source: str) -> Optional[str]:
     """
@@ -180,7 +178,6 @@ def _copy_chrome_profile(source: str) -> Optional[str]:
     """
     global _cached_chrome_profile
     if _cached_chrome_profile and Path(_cached_chrome_profile).is_dir():
-        logger.debug("Reusing cached Chrome profile: %s", _cached_chrome_profile)
         return _cached_chrome_profile
 
     try:
@@ -192,17 +189,12 @@ def _copy_chrome_profile(source: str) -> Optional[str]:
         if local_state.is_file():
             shutil.copy2(str(local_state), tmp_dir)
 
-        # Copy Default profile, skipping large/unnecessary dirs
+        # Copy Default profile, skipping large cache dirs
         src_default = src / "Default"
         dst_default = Path(tmp_dir) / "Default"
 
-        skip_dirs = {
-            "Cache", "Code Cache", "GPUCache", "Service Worker",
-            "DawnCache", "ShaderCache", "GrShaderCache",
-            "blob_storage", "Session Storage", "Sessions",
-            "File System", "IndexedDB", "databases",
-            "WebStorage", "optimization_guide_prediction_model_downloads",
-        }
+        skip_dirs = {"Cache", "Code Cache", "GPUCache", "Service Worker",
+                     "DawnCache", "ShaderCache", "GrShaderCache"}
 
         def _ignore(directory, contents):
             return [c for c in contents if c in skip_dirs]
@@ -225,6 +217,7 @@ def _copy_chrome_profile(source: str) -> Optional[str]:
         logger.info("Copied Chrome profile to temp dir: %s", tmp_dir)
         _cached_chrome_profile = tmp_dir
         return tmp_dir
+
     except Exception as exc:
         logger.warning("Failed to copy Chrome profile: %s, using clean session", exc)
         return None
